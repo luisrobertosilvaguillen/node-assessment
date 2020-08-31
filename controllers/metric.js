@@ -1,8 +1,8 @@
 var models  = require('../models');
-
+const { Op } = require("sequelize");
 // Private Methods
 addMetricValue = (req, res, next, metric) => {
-    const value = req.body.value;
+    const value = Math.round(req.body.value);
     models.MetricValues.create({value, metricId: metric.id})
     .then(newMetric => {
         metric = newMetric;
@@ -12,6 +12,27 @@ addMetricValue = (req, res, next, metric) => {
         next(error);
     })
 }
+
+getMetricValuesSummarized =  (req, res, next, metric) => {
+    const currentDate = new Date();
+    currentDate.setHours(currentDate.getHours() - 1);
+
+    models.MetricValues.sum('value', {
+        where: {
+            metricId: metric.id,
+            createdAt: {
+                [Op.gt]: currentDate,
+            }
+        }
+    })
+    .then(total => {
+        res.status(200).send({value: total});
+    })    
+    .catch((error) => {
+        next(error);
+    })
+}
+
 
 // Controller Services
 exports.addMetric = (req, res, next) => {
@@ -37,3 +58,20 @@ exports.addMetric = (req, res, next) => {
     })
 };
 
+exports.metricSum = (req, res, next) => {
+    const metricKey = req.params["key"];
+    models.Metrics
+    .findOne({ where: {name: metricKey} })
+    .then((metric) => {
+        if(metric) { // If metric exist, sum all values in the last hour
+            getMetricValuesSummarized(req, res, next, metric);
+        } else { // If metric not exist, return error
+            const error = new Error("Metric not found");
+            error.status= 404;
+            next(error);
+        }
+    })
+    .catch((error) => {
+        next(error);
+    })
+};
